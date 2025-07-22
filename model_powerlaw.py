@@ -7,8 +7,7 @@ def power_law_model(gamma_dot, k, n):
 def fit_powerlaw(data):
     shear_rates = np.array(data.get("shear_rates", []))
     shear_stresses = np.array(data.get("shear_stresses", []))
-    
-    # Get flow parameters
+
     flow_rate = float(data.get("flow_rate", 1))
     diameter = float(data.get("diameter", 1))
     density = float(data.get("density", 1))
@@ -26,7 +25,14 @@ def fit_powerlaw(data):
         r_squared = 1 - (ss_res / ss_tot)
 
         mu_app = k * (np.mean(shear_rates) ** (n - 1))
-        Re = (8 * density * flow_rate) / (np.pi * diameter * mu_app)
+
+        if flow_rate > 0 and diameter > 0 and density > 0:
+            Q = flow_rate
+            D = diameter
+            rho = density
+            Re = (8 * rho * Q) / (np.pi * D * mu_app)
+        else:
+            Re = None
 
         return {
             "model": "Power Law",
@@ -34,9 +40,10 @@ def fit_powerlaw(data):
             "n": round(n, 6),
             "r_squared": round(r_squared, 6),
             "mu_app": round(mu_app, 6),
-            "re": round(Re, 2),
+            "re": round(Re, 2) if Re is not None else None,
             "equation": f"τ = {k:.3g}·γ̇^{n:.3g}"
         }
 
     except Exception as e:
         return {"error": f"Fitting failed: {str(e)}"}
+

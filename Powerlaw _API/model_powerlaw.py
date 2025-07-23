@@ -1,42 +1,42 @@
 import numpy as np
 from scipy.optimize import curve_fit
+from sklearn.metrics import r2_score
 
-def power_law_model(gamma_dot, k, n):
-    return k * np.power(gamma_dot, n)
+def fit_powerlaw(shear_rates, shear_stresses, flow_rate, diameter, density, re_critical=4000):
+    # Power Law model: τ = k * γ̇^n
+    def model(gamma_dot, k, n):
+        return k * np.power(gamma_dot, n)
 
-def fit_powerlaw(data):
-    shear_rates = np.array(data.get("shear_rates", []))
-    shear_stresses = np.array(data.get("shear_stresses", []))
-    
-    # Get flow parameters
-    flow_rate = float(data.get("flow_rate", 1))
-    diameter = float(data.get("diameter", 1))
-    density = float(data.get("density", 1))
+    popt, _ = curve_fit(model, shear_rates, shear_stresses, bounds=(0, np.inf))
+    k, n = popt
 
-    if len(shear_rates) != len(shear_stresses):
-        return {"error": "Mismatched data lengths."}
+    predicted = model(np.array(shear_rates), *popt)
+    r2 = r2_score(shear_stresses, predicted)
 
-    try:
-        popt, _ = curve_fit(power_law_model, shear_rates, shear_stresses, maxfev=10000)
-        k, n = popt
-        predictions = power_law_model(shear_rates, k, n)
-        residuals = shear_stresses - predictions
-        ss_res = np.sum(residuals**2)
-        ss_tot = np.sum((shear_stresses - np.mean(shear_stresses))**2)
-        r_squared = 1 - (ss_res / ss_tot)
+    # tau0 for Power Law is always 0
+    tau0 = 0.0
 
-        mu_app = k * (np.mean(shear_rates) ** (n - 1))
-        Re = (8 * density * flow_rate) / (np.pi * diameter * mu_app)
+    # Apparent viscosity at average shear rate
+    avg_shear_rate = np.mean(shear_rates)
+    mu_app = k * avg_shear_rate ** (n - 1)
 
-        return {
-            "model": "Power Law",
-            "k": round(k, 6),
-            "n": round(n, 6),
-            "r_squared": round(r_squared, 6),
-            "mu_app": round(mu_app, 6),
-            "re": round(Re, 2),
-            "equation": f"τ = {k:.3g}·γ̇^{n:.3g}"
-        }
+    # Calculate velocity and Re
+    velocity = flow_rate / (np.pi * (diameter / 2) ** 2)
+    re = (density * velocity ** (2 - n) * diameter ** n) / (k * 8 ** (n - 1))
 
-    except Exception as e:
-        return {"error": f"Fitting failed: {str(e)}"}
+    # Calculate q_critical: flow rate below which Re < Re_critical
+    q_critical = (np.pi * diameter ** 2 / 4) * ((re_critical * k * 8 ** (n - 1)) / (density * diameter ** n)) ** (1 / (2 - n))
+
+    equation = f"τ = {k:.3f}·γ̇^{n:.3f}"
+
+    return {
+        "equation": equation,
+        "tau0": tau0,
+        "k": k,
+        "n": n,
+        "r2": r2,
+        "mu_app": mu_app,
+        "re": re,
+        "re_critical": re_critical,
+        "q_critical": q_critical
+    }
